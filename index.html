@@ -74,10 +74,31 @@ nav a{gap:8px;padding-left:7px;padding-right:7px}
 nav a .nav-count{flex-shrink:0;margin-left:auto}
 @media(min-width:701px) and (max-width:1000px){nav a{font-size:12px;gap:6px}.nav-picture{width:30px;height:30px;flex-basis:30px}}
 @media(max-width:700px){nav a{gap:6px}.nav-picture{width:28px;height:28px;flex-basis:28px}.nav-title{white-space:nowrap}}
+
+.mobile-backup{display:none}@media(max-width:700px){.mobile-backup{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}.mobile-backup button{flex:1;font-size:11px;padding:8px}}
+
+.cloud-panel{margin:12px 24px;padding:11px 14px;background:linear-gradient(110deg,#16404a,#37234e);border:1px solid #68518e;border-radius:10px;font-size:12px}
+.cloud-panel summary{cursor:pointer;font-weight:650;color:#f2f5ff}.cloud-panel summary span{display:inline-block;margin-left:12px;font-size:11px;color:#79f5eb}
+.cloud-panel p{margin:10px 0}.cloud-panel form{display:flex;flex-wrap:wrap;gap:10px;align-items:end}.cloud-panel form label{display:grid;gap:5px;flex:1;min-width:180px}.cloud-panel input{width:100%;text-transform:none;letter-spacing:normal}.cloud-actions{display:flex;flex-wrap:wrap;gap:8px}.cloud-actions button{font-size:11px}.cloud-conflict{margin-top:10px;padding:10px;background:#33204b;border:1px solid #bf8aff;border-radius:8px;overflow-wrap:anywhere}.cloud-conflict strong{display:block}.cloud-conflict p{white-space:pre-wrap;text-transform:none}.cloud-conflict button{font-size:11px;margin:4px 8px 0 0}.cloud-panel [hidden]{display:none!important}.cloud-panel button:disabled{opacity:.55;cursor:wait}
+@media(max-width:700px){.cloud-panel{margin:10px 14px}.cloud-panel summary span{display:block;margin:5px 0 0}.cloud-panel form label{min-width:100%}}
 </style></head>
 <body>
 <aside class="sidebar"><a class="brand" href="#today"><span class="brand-symbol">❧</span><span>palia<small>MEIN SAMMELBUCH</small></span></a><div class="nav-label">DEIN ABENTEUER</div><nav id="nav" aria-label="Hauptnavigation"></nav><div class="sidebar-bottom"><p>Ein kleiner Schritt.<br>Eine vollere Sammlung.</p><button id="export">↓ Fortschritt sichern</button><button id="import">↑ Sicherung laden</button><input id="backup-file" type="file" accept="application/json,.json" hidden><a href="#sources">Quellen & Datenstand</a></div></aside>
 <div class="shell"><header class="topbar"><span>Dein Begleiter durch Palia</span><span id="save-status" role="status">Fortschritt auf diesem Gerät</span></header>
+<div class="mobile-backup" aria-label="Fortschritt übertragen"><button id="mobile-export">↓ Fortschritt sichern</button><button id="mobile-import">↑ Sicherung laden</button></div>
+<section class="cloud-panel" aria-label="Anmeldung und Cloud-Synchronisierung">
+  <details id="cloud-details"><summary>☁ Anmeldung & Synchronisierung <span id="cloud-status" role="status">Nur lokal gespeichert</span></summary>
+    <p id="cloud-message" role="status">Ohne Anmeldung bleibt dein Fortschritt auf diesem Gerät.</p>
+    <form id="cloud-auth-form">
+      <label>E-Mail-Adresse<input id="cloud-email" type="email" required autocomplete="username" maxlength="254"></label>
+      <label>Passwort<input id="cloud-password" type="password" required minlength="6" autocomplete="current-password"></label>
+      <div class="cloud-actions"><button type="submit" class="primary" id="cloud-login">Anmelden</button><button type="submit" id="cloud-register">Registrieren</button><button type="button" id="cloud-reset">Passwort zurücksetzen</button></div>
+    </form>
+    <div id="cloud-account" hidden><p id="cloud-user"></p><div class="cloud-actions"><button id="cloud-import-local" type="button">Lokalen Stand ergänzen</button><button id="cloud-retry" type="button">Erneut verbinden</button><button id="cloud-logout" type="button">Abmelden</button></div></div>
+    <div id="cloud-conflicts" aria-live="polite"></div>
+    <p class="muted">Auf Handy und Tablet dieselbe E-Mail verwenden. Vorhandene Cloud-Werte werden beim Import nicht ersetzt. Sicherungen weiterhin regelmäßig herunterladen.</p>
+  </details>
+</section>
 <section class="eventbar" aria-label="Eventuhr"><div class="clock"><small>PALIA-ZEIT</small><strong id="palia-clock">00:00</strong><span id="real-clock"></span></div><div class="event-heading"><span class="live-dot"></span>Was passiert gerade?<small>Planmäßige Zeiten · keine Server-Liveabfrage</small></div><div id="events" class="events"></div></section>
 <main id="main"></main><footer>Fanprojekt · Nicht mit Singularity Six verbunden. <a href="#sources">Quellen & Hinweise</a></footer></div>
 <div id="toast" class="toast" role="status" hidden></div>
@@ -160,7 +181,7 @@ if(typeof module!=='undefined')module.exports=PaliaCore;
   function germanTerms(s){return String(s||'').replace(termPattern,(full,prefix,term)=>prefix+DE.names[term]);}
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const link=(url,label)=>/^https:\/\//.test(url||'')?`<a class="source-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`:'';
-  let state={progress:{},days:{}}, storageOK=true, initialError='';
+  let state={progress:{},days:{}}, storageOK=true, initialError='', storageKey=KEY, applyingCloud=false;
   try {const s=localStorage.getItem(KEY);if(s)state=C.validateBackup({app:'palia-sammelbuch',version:1,state:JSON.parse(s)});}catch(e){storageOK=false;initialError='Die gespeicherten Daten konnten nicht gelesen werden. Der vorhandene Speicher wird nicht überschrieben. Bitte lade eine gültige Sicherung.';}
   let current='', search='', filter='all', group='', page=1, activeDay=C.dayKey(new Date());
   const byId=new Map(DATA.map(i=>[i.id,i]));
@@ -181,7 +202,7 @@ if(typeof module!=='undefined')module.exports=PaliaCore;
   document.getElementById('main').addEventListener('load',e=>{const img=e.target;if(!img.matches?.('img[data-item-image]'))return;const button=img.closest('button');if(img.naturalWidth<=1||img.naturalHeight<=1){failedImages.add(img.dataset.itemImage);button.remove();return;}button.classList.add('ready');button.disabled=false;},true);
   document.getElementById('main').addEventListener('error',e=>{const img=e.target;if(!img.matches?.('img[data-item-image]'))return;failedImages.add(img.dataset.itemImage);img.closest('button')?.remove();},true);
   function toast(s){const el=document.getElementById('toast');el.textContent=s;el.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,5000);}
-  function save(){if(!storageOK){document.getElementById('save-status').textContent='Nicht dauerhaft gespeichert · bitte exportieren';return;}try{localStorage.setItem(KEY,JSON.stringify(state));document.getElementById('save-status').textContent='✓ Auf diesem Gerät gespeichert';}catch(e){storageOK=false;document.getElementById('save-status').textContent='Speichern fehlgeschlagen · bitte exportieren';toast('Browser-Speicher nicht verfügbar. Bitte sichere deinen Fortschritt als Datei.');}}
+  function save(){if(!storageOK){document.getElementById('save-status').textContent='Nicht dauerhaft gespeichert · bitte exportieren';return;}try{localStorage.setItem(storageKey,JSON.stringify(state));document.getElementById('save-status').textContent='✓ Auf diesem Gerät gespeichert';}catch(e){storageOK=false;document.getElementById('save-status').textContent='Speichern fehlgeschlagen · bitte exportieren';toast('Browser-Speicher nicht verfügbar. Bitte sichere deinen Fortschritt als Datei.');return;}if(!applyingCloud)window.PaliaCloud?.capture(state);}
   function today(){const key=C.dayKey(new Date());if(!state.days[key]){state.days[key]={board:[{text:'',done:false},{text:'',done:false}],goals:C.dailyGoals(DATA,state.progress),tasks:[]};save();}return state.days[key];}
   function setCheck(id,key,value){const i=byId.get(id);if(!i||!C.checks(i).some(([k])=>k===key))return;state.progress[id]={...(state.progress[id]||{}),[key]:value};save();}
   function translate(s){const pairs=[['Any time','Jederzeit'],['Morning','Morgens (03–06 Uhr)'],['Evening','Abends (18–21 Uhr)'],['Night','Nachts (21–03 Uhr)'],['Day','Tagsüber (06–18 Uhr)'],['Glow Worm','Glühwürmchen'],['No bait','Kein Köder'],['Worm','Wurm'],['Cooking Guild','Koch-Gildenladen'],['Cooking Level','Kochen Stufe'],['Gold','Gold'],['Quest -','Quest:'],['Treasure Chest','Schatztruhe'],['Room','Zimmer'],['Key','Schlüssel'],['You need','Benötigt:'],['to cook it.','zum Kochen.'],['Reward','Belohnung'],['Purchase','Kaufen'],['Hunting','Jagd'],['Fishing','Angeln'],['Bug Catching','Insektenfang'],["Zeki's Lucky Balls",'Zekis Glückskugeln'],['Trade Only','Nur durch Tausch'],['Event/Login','Event/Login'],['Elderwood','Holunderwald'],['Kilima Valley','Kilima-Tal'],['Bahari Bay','Bahari-Bucht'],['Any Salt','Beliebiges Salz'],['Royal Highlands','Königliches Hochland'],['Kilima Lake','Kilima-See'],['Kilima Rivers','Kilima-Flüsse'],['Bahari Coast','Bahari-Küste'],['Bahari Rivers','Bahari-Flüsse'],['Bahari Forest','Bahari-Wald'],['Bahari Fields','Bahari-Felder'],['Kilima Fields','Kilima-Felder'],['Dragon Shrine','Drachenschrein'],['Daiya Family Farm','Daiya-Familienfarm'],['Ponds','Teiche'],['Caves','Höhlen'],['Freshwater','Süßwasser'],['Saltwater','Salzwasser'],['Temple of the Gales','Tempel der Stürme']];if(DE.groups[s])return DE.groups[s];let out=germanTerms(s);for(const [a,b] of pairs)out=out.replaceAll(a,b);return out;}
@@ -198,21 +219,311 @@ if(typeof module!=='undefined')module.exports=PaliaCore;
   function listHTML(kind){const items=DATA.filter(i=>i.kind===kind).sort((a,b)=>(a.group||'').localeCompare(b.group||'')||nameOf(a).localeCompare(nameOf(b),'de'));const rows=items.filter(matches);const pageSize=60,total=Math.max(1,Math.ceil(rows.length/pageSize));page=Math.min(page,total);const slice=rows.slice((page-1)*pageSize,page*pageSize);const intro=kind==='furniture'?'Nach Möbelserie geordnet. Am Ende jeder dargestellten Serie steht der Materialbedarf für alle noch nicht hergestellten Rezepte dieser Serie.':kind==='recipe'?'Rezept erhalten, normal gekocht und in Sternqualität gekocht sind voneinander unabhängige Ziele.':kind==='fish'||kind==='bug'?'Normalqualität für deinen Sammelfortschritt, ein Sternexemplar fürs Haus und ein weiteres Sternexemplar für deine Tresorkiste.':'Hake ab, was du gesammelt hast. Fundinformationen und Quellen findest du beim jeweiligen Eintrag.';
     let contents='';if(kind==='furniture'){for(const g of [...new Set(slice.map(i=>i.group))]){const all=items.filter(i=>i.group===g);contents+=`<section class="series"><div class="series-header"><h2>${esc(groupName(g))}</h2><span class="badge">${all.filter(i=>state.progress[i.id]?.crafted).length} / ${all.length} hergestellt</span></div><div class="list">${slice.filter(i=>i.group===g).map(itemHTML).join('')}</div>${materialHTML(all,'Materialsumme · '+groupName(g))}</section>`;}}else contents=`<div class="list">${slice.map(itemHTML).join('')}</div>`;
     return header(kinds[kind][1],intro)+filterHTML(kind)+`<p class="muted">${rows.length} von ${items.length} Einträgen${kind==='furniture'?' · Materialsumme umfasst immer die ganze Serie, unabhängig vom Suchfilter.':''}</p>`+(kind==='fish'||kind==='bug'?'<p class="notice">Nicht jeder Fang wird für ein Tresorbündel benötigt. Die zusätzlichen Stern-Häkchen bilden dein persönliches Sammelziel ab, keine allgemeine Spielanforderung.</p>':'')+(rows.length?contents:'<div class="empty">Keine passenden Einträge.</div>')+(total>1?`<div class="pager"><button data-page="${page-1}" ${page===1?'disabled':''}>← Zurück</button><span>Seite ${page} / ${total}</span><button data-page="${page+1}" ${page===total?'disabled':''}>Weiter →</button></div>`:'');}
-  function sourcesHTML(){return header('Quellen & Datenstand','Ein transparentes Sammelbuch: nachprüfbare Quellen, sichtbare Datenlücken und eine Sicherung deines Fortschritts.')+`<section class="source-box"><h2>Was bereits enthalten ist</h2><p>123 Fische · 64 Insekten · 83 Kochrezepte · 159 Plüschtiere · 67 Kartoffeltöpfe · 67 Artefakte · ${DATA.filter(i=>i.kind==='furniture').length} Möbelrezepte und 53 weitere Werkbankrezepte.</p><p class="muted">Recherche am 09.10.2026. Fanglisten und Kochrezepte: Quellenstand Palia 0.206 / 05.10.2026. Möbelmaterialien: separater Community-Datenbestand; dessen Aktualität und Vollständigkeit sind nicht für alle Serien bestätigt. Gegenstandsnamen und Materialien werden auf Deutsch angezeigt. Grundlage ist die deutsche Palia-Datenbank von TH.GL; ein Kerzenname ist als vorläufige eigene Übersetzung gekennzeichnet. Originalnamen bleiben intern für Bildsuche und Fortschrittskennung erhalten.</p><div class="notice">Der Katalog ist ein recherchierter Datenstand, keine garantierte vollständige Liste aller aktuell verfügbaren Objekte. Einige Fundwege sind nur als allgemeiner Bezugsweg eingetragen; konkrete Dropchancen sind nicht vollständig bestätigt. Die Materialsumme gilt für die enthaltenen Rezepte. Sie wird nicht als vollständiger Bedarf aller im Spiel vorhandenen Serienbestandteile ausgegeben.</div></section><section class="source-box"><h2>Spieldaten & Herkunft</h2><ul><li>${link('https://palia.th.gl/de/db/furniture','TH.GL · Deutsche Möbelbegriffe')} ${link('https://palia.th.gl/de/db/fish','Fische')} ${link('https://palia.th.gl/de/db/bugs','Insekten')} ${link('https://palia.th.gl/de/db/inventory','Gegenstände und Materialien')} ${link('https://palia.th.gl/de/db/recipes','Rezepte')}</li><li>${link('https://paliapal.com/fish','Palia Pal · Fische')} ${link('https://paliapal.com/bugs','Insekten')} ${link('https://paliapal.com/recipes','Kochrezepte')}</li><li>${link('https://paliapal.com/plushies','Palia Pal · Plüschtiere')} ${link('https://paliapal.com/potato-pods','Kartoffeltöpfe')} ${link('https://paliapal.com/artifacts','Artefakte')}</li><li>${link('https://palia-planner.com/en/wiki/plush','Palia Planner · Fundwege der Plüschtiere')}</li><li>${link('https://brimdor.github.io/palia-guides/palia-furniture-crafting-guide.html','Brimdor · Möbel und direkte Rezeptmaterialien')}</li><li>${link('https://paliapal.com/furniture','Palia Pal · Möbelserien')} ${link('https://palia.wiki.gg/wiki/Furniture_Making_Guild','Palia Wiki · Möbelbau-Gildenladen')}</li><li>${link('https://paliapal.com/world-events','Palia Pal · Eventzeiten')} ${link('https://www.th.gl/faq/palia-event-clock','TH.GL · Eventablauf')} ${link('https://palia.wiki.gg/wiki/Guide:Repeatable_Events','Palia Wiki · tägliche Resets')}</li></ul><p class="muted">Palia-Wiki-Inhalte und daraus abgeleitete Informationen: Community-Autoren des Palia Wiki, über Palia Pal; ${link('https://creativecommons.org/licenses/by-sa/4.0/','CC BY-SA 4.0')}. Die Gegenstandssymbole werden über den Bilddienst von Palia Pal geladen. Spielgrafiken: Singularity Six / Palia; sie sind nicht Bestandteil der CC-Lizenz für Wiki-Texte. Bilder benötigen Internet. Fehlende oder nicht ladbare Bilder bleiben leer. Beschreibungsartikel werden nicht übernommen.</p></section><section class="source-box"><h2>Eventuhr</h2><p>Eine reale Stunde entspricht einem Palia-Tag. Die Uhr berechnet den Zeitplan aus deiner Gerätezeit. Aktive Zeitfenster sind keine Livebestätigung für deinen Server: Blumen können schon gepflückt und Hainbäume schon gefällt sein. Saisonale Events werden ohne bestätigten aktuellen Kalender nicht als aktiv angezeigt.</p><ul>${C.events.map(e=>`<li><b>${esc(e.name)}:</b> ${esc(e.place)}. ${esc(e.detail)} ${link(e.source,'Quelle')}</li>`).join('')}</ul></section><section class="source-box"><h2>Dein Fortschritt</h2><p>Häkchen und Tageslisten werden im Browser auf diesem Gerät gespeichert. Es gibt keine Verbindung zu deinem Palia-Konto und keinen automatischen Abgleich mit der Xbox. Exportiere regelmäßig eine Sicherung; Browserwechsel, gelöschte Browserdaten oder ein anderer Dateipfad können den Zugriff auf lokale Daten verändern.</p><button data-export>↓ Sicherung herunterladen</button> <button data-import>↑ Sicherung laden</button></section>`;}
+  function sourcesHTML(){return header('Quellen & Datenstand','Ein transparentes Sammelbuch: nachprüfbare Quellen, sichtbare Datenlücken und eine Sicherung deines Fortschritts.')+`<section class="source-box"><h2>Was bereits enthalten ist</h2><p>123 Fische · 64 Insekten · 83 Kochrezepte · 159 Plüschtiere · 67 Kartoffeltöpfe · 67 Artefakte · ${DATA.filter(i=>i.kind==='furniture').length} Möbelrezepte und 53 weitere Werkbankrezepte.</p><p class="muted">Recherche am 09.10.2026. Fanglisten und Kochrezepte: Quellenstand Palia 0.206 / 05.10.2026. Möbelmaterialien: separater Community-Datenbestand; dessen Aktualität und Vollständigkeit sind nicht für alle Serien bestätigt. Gegenstandsnamen und Materialien werden auf Deutsch angezeigt. Grundlage ist die deutsche Palia-Datenbank von TH.GL; ein Kerzenname ist als vorläufige eigene Übersetzung gekennzeichnet. Originalnamen bleiben intern für Bildsuche und Fortschrittskennung erhalten.</p><div class="notice">Der Katalog ist ein recherchierter Datenstand, keine garantierte vollständige Liste aller aktuell verfügbaren Objekte. Einige Fundwege sind nur als allgemeiner Bezugsweg eingetragen; konkrete Dropchancen sind nicht vollständig bestätigt. Die Materialsumme gilt für die enthaltenen Rezepte. Sie wird nicht als vollständiger Bedarf aller im Spiel vorhandenen Serienbestandteile ausgegeben.</div></section><section class="source-box"><h2>Spieldaten & Herkunft</h2><ul><li>${link('https://palia.th.gl/de/db/furniture','TH.GL · Deutsche Möbelbegriffe')} ${link('https://palia.th.gl/de/db/fish','Fische')} ${link('https://palia.th.gl/de/db/bugs','Insekten')} ${link('https://palia.th.gl/de/db/inventory','Gegenstände und Materialien')} ${link('https://palia.th.gl/de/db/recipes','Rezepte')}</li><li>${link('https://paliapal.com/fish','Palia Pal · Fische')} ${link('https://paliapal.com/bugs','Insekten')} ${link('https://paliapal.com/recipes','Kochrezepte')}</li><li>${link('https://paliapal.com/plushies','Palia Pal · Plüschtiere')} ${link('https://paliapal.com/potato-pods','Kartoffeltöpfe')} ${link('https://paliapal.com/artifacts','Artefakte')}</li><li>${link('https://palia-planner.com/en/wiki/plush','Palia Planner · Fundwege der Plüschtiere')}</li><li>${link('https://brimdor.github.io/palia-guides/palia-furniture-crafting-guide.html','Brimdor · Möbel und direkte Rezeptmaterialien')}</li><li>${link('https://paliapal.com/furniture','Palia Pal · Möbelserien')} ${link('https://palia.wiki.gg/wiki/Furniture_Making_Guild','Palia Wiki · Möbelbau-Gildenladen')}</li><li>${link('https://paliapal.com/world-events','Palia Pal · Eventzeiten')} ${link('https://www.th.gl/faq/palia-event-clock','TH.GL · Eventablauf')} ${link('https://palia.wiki.gg/wiki/Guide:Repeatable_Events','Palia Wiki · tägliche Resets')}</li></ul><p class="muted">Palia-Wiki-Inhalte und daraus abgeleitete Informationen: Community-Autoren des Palia Wiki, über Palia Pal; ${link('https://creativecommons.org/licenses/by-sa/4.0/','CC BY-SA 4.0')}. Die Gegenstandssymbole werden über den Bilddienst von Palia Pal geladen. Spielgrafiken: Singularity Six / Palia; sie sind nicht Bestandteil der CC-Lizenz für Wiki-Texte. Bilder benötigen Internet. Fehlende oder nicht ladbare Bilder bleiben leer. Beschreibungsartikel werden nicht übernommen.</p></section><section class="source-box"><h2>Eventuhr</h2><p>Eine reale Stunde entspricht einem Palia-Tag. Die Uhr berechnet den Zeitplan aus deiner Gerätezeit. Aktive Zeitfenster sind keine Livebestätigung für deinen Server: Blumen können schon gepflückt und Hainbäume schon gefällt sein. Saisonale Events werden ohne bestätigten aktuellen Kalender nicht als aktiv angezeigt.</p><ul>${C.events.map(e=>`<li><b>${esc(e.name)}:</b> ${esc(e.place)}. ${esc(e.detail)} ${link(e.source,'Quelle')}</li>`).join('')}</ul></section><section class="source-box"><h2>Dein Fortschritt</h2><p>Häkchen und Tageslisten bleiben lokal gespeichert. Nach der Sammelbuch-Anmeldung werden Änderungen zusätzlich mit deinen anderen angemeldeten Geräten synchronisiert. Bestehende lokale Daten werden nur nach Bestätigung ergänzt. Es gibt keine Verbindung zum Palia-Konto oder zur Xbox. Exportiere regelmäßig eine Sicherung; Browserwechsel, gelöschte Browserdaten oder ein anderer Dateipfad können den Zugriff auf lokale Daten verändern.</p><button data-export>↓ Sicherung herunterladen</button> <button data-import>↑ Sicherung laden</button></section>`;}
   function materialsPage(){const all=DATA.filter(i=>i.kind==='furniture'),groups=[...new Set(all.map(i=>i.group))].sort();return header('Materialbedarf','Die offenen Möbelrezepte bestimmen deine Einkaufsliste. Häkchen bei „hergestellt“ werden sofort berücksichtigt.')+`<div class="filters"><select id="group-filter" aria-label="Möbelserie"><option value="">Alle Serien</option>${groups.map(g=>`<option value="${esc(g)}" ${g===group?'selected':''}>${esc(groupName(g))}</option>`).join('')}</select></div><div class="notice">Berechnet werden die enthaltenen Rezeptmaterialien. Vollständigkeit und Aktualität des Möbelkatalogs sind noch nicht für jede Serie bestätigt.</div>`+(group?materialHTML(all.filter(i=>i.group===group),'Materialsumme · '+groupName(group)):materialHTML(all,'Gesamter direkter Materialbedarf')+groups.map(g=>materialHTML(all.filter(i=>i.group===g),'Materialsumme · '+groupName(g))).join(''));}
-  function render(){const active=document.activeElement,focused=active?.dataset?.item?{item:active.dataset.item,key:active.dataset.check}:null,focusedId=active?.id;document.getElementById('nav').innerHTML=Object.entries(kinds).map(([key,[icon,title]])=>`<a href="#${key}" class="${current===key?'active':''}" ${current===key?'aria-current="page"':''}>${navImageHTML(key)}<span class="nav-title">${esc(title)}</span><span class="nav-count">${DATA.filter(i=>i.kind===key).length||''}</span></a>`).join('');document.getElementById('main').innerHTML=(initialError?`<div class="notice" role="alert">${esc(initialError)}</div>`:'')+(current==='today'?dayHTML():current==='sources'?sourcesHTML():current==='materials'?materialsPage():listHTML(current));if(focused){const next=[...document.querySelectorAll('input[data-item]')].find(el=>el.dataset.item===focused.item&&el.dataset.check===focused.key);next?.focus({preventScroll:true});}else if(['search','status-filter','group-filter'].includes(focusedId))document.getElementById(focusedId)?.focus({preventScroll:true});}
+  function render(){const draft=document.querySelector('#add-task input')?.value;const boardFocus=document.activeElement?.dataset?.boardText;const selection=boardFocus!==undefined?document.activeElement.selectionStart:null;const taskFocus=document.activeElement?.closest?.('#add-task')&&document.activeElement.tagName==='INPUT';const active=document.activeElement,focused=active?.dataset?.item?{item:active.dataset.item,key:active.dataset.check}:null,focusedId=active?.id;document.getElementById('nav').innerHTML=Object.entries(kinds).map(([key,[icon,title]])=>`<a href="#${key}" class="${current===key?'active':''}" ${current===key?'aria-current="page"':''}>${navImageHTML(key)}<span class="nav-title">${esc(title)}</span><span class="nav-count">${DATA.filter(i=>i.kind===key).length||''}</span></a>`).join('');document.getElementById('main').innerHTML=(initialError?`<div class="notice" role="alert">${esc(initialError)}</div>`:'')+(current==='today'?dayHTML():current==='sources'?sourcesHTML():current==='materials'?materialsPage():listHTML(current));if(focused){const next=[...document.querySelectorAll('input[data-item]')].find(el=>el.dataset.item===focused.item&&el.dataset.check===focused.key);next?.focus({preventScroll:true});}else if(['search','status-filter','group-filter'].includes(focusedId))document.getElementById(focusedId)?.focus({preventScroll:true});if(draft!==undefined&&document.querySelector('#add-task input'))document.querySelector('#add-task input').value=draft;if(boardFocus!==undefined){const el=document.querySelector('[data-board-text=\"'+boardFocus+'\"]');el?.focus({preventScroll:true});el?.setSelectionRange(selection,selection);}else if(taskFocus)document.querySelector('#add-task input')?.focus({preventScroll:true});}
   function route(){const hash=location.hash.slice(1);current=kinds[hash]?hash:'today';search='';filter='all';group='';page=1;render();}
   function duration(n){n=Math.max(0,Math.ceil(n));return Math.floor(n/60)+'m '+String(n%60).padStart(2,'0')+'s';}
   function tick(){const now=new Date();document.getElementById('palia-clock').textContent=C.paliaTime(now);document.getElementById('real-clock').textContent=now.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})+' Ortszeit';const el=document.getElementById('events'),scroll=el.scrollLeft;const all=C.events.map(e=>({e,s:C.eventState(e,now)})).sort((a,b)=>{const rank=x=>['active','window','reward'].includes(x.s.status)?0:1;return rank(a)-rank(b)||a.s.until-b.s.until;});el.innerHTML=all.map(({e,s})=>{const status=s.status==='active'?'Aktiv nach Zeitplan · noch '+duration(s.remaining):s.status==='window'?'Eventfenster · noch '+duration(s.remaining):s.status==='reward'?'Belohnungstruhe · noch '+duration(s.remaining):s.status==='spawn'?'Nächster Spawn in '+duration(s.until):'Start in '+duration(s.until);return `<a class="event-chip ${['active','window','reward'].includes(s.status)?'active':''}" href="${esc(e.source)}" target="_blank" rel="noopener noreferrer" title="${esc(e.detail)}"><span class="timing">${esc(status)}</span><strong>${esc(e.name)}</strong><small>${esc(e.place)}</small>${s.status==='spawn'?'<small>Aktuelle Verfügbarkeit serverabhängig</small>':''}</a>`;}).join('');el.scrollLeft=scroll;const day=C.dayKey(now);if(day!==activeDay){activeDay=day;today();render();toast('Ein neuer Palia-Tag: Deine Tagesliste ist bereit.');}}
   function exportState(){const blob=new Blob([JSON.stringify({app:'palia-sammelbuch',version:1,exportedAt:new Date().toISOString(),state},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='palia-fortschritt-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);toast('Sicherung als Datei heruntergeladen.');}
   document.getElementById('export').onclick=exportState;
+  document.getElementById('mobile-export').onclick=exportState;
+  document.getElementById('mobile-import').onclick=()=>document.getElementById('backup-file').click();
   document.getElementById('import').onclick=()=>document.getElementById('backup-file').click();
-  document.getElementById('backup-file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>10000000)throw Error('Die Datei ist zu groß.');const next=C.validateBackup(JSON.parse(await f.text()));if(!confirm('Diese Sicherung ersetzt deinen aktuellen Fortschritt und deine Tageslisten. Fortfahren?'))return;state=next;storageOK=true;initialError='';save();render();toast('Fortschritt aus der Sicherung geladen.');}catch(err){toast('Import abgebrochen: '+err.message);}finally{e.target.value='';}};
+  document.getElementById('backup-file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>10000000)throw Error('Die Datei ist zu groß.');const next=C.validateBackup(JSON.parse(await f.text()));if(window.PaliaCloud?.signedIn()){await window.PaliaCloud.importState(next);return;}if(!confirm('Diese Sicherung ersetzt deinen aktuellen Fortschritt und deine Tageslisten. Fortfahren?'))return;state=next;storageOK=true;initialError='';save();render();toast('Fortschritt aus der Sicherung geladen.');}catch(err){toast('Import abgebrochen: '+err.message);}finally{e.target.value='';}};
   document.getElementById('main').addEventListener('change',e=>{const t=e.target;if(t.dataset.item){setCheck(t.dataset.item,t.dataset.check,t.checked);render();}else if(t.dataset.boardText!==undefined){today().board[Number(t.dataset.boardText)].text=t.value;save();}else if(t.dataset.boardDone!==undefined){today().board[Number(t.dataset.boardDone)].done=t.checked;save();render();}else if(t.dataset.task!==undefined){today().tasks[Number(t.dataset.task)].done=t.checked;save();render();}else if(t.id==='status-filter'){filter=t.value;page=1;render();}else if(t.id==='group-filter'){group=t.value;page=1;render();}});
   document.getElementById('main').addEventListener('input',e=>{if(e.target.id==='search'){const start=e.target.selectionStart;search=e.target.value;page=1;render();const n=document.getElementById('search');n.focus();n.setSelectionRange(start,start);}else if(e.target.dataset.boardText!==undefined){today().board[Number(e.target.dataset.boardText)].text=e.target.value;save();}});
   document.getElementById('main').addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;if(t.dataset.imageItem){showImage(t.dataset.imageItem);}else if(t.id==='reroll'){const d=today();const unfinished=C.dailyGoals(DATA,state.progress),completed=d.goals.filter(g=>state.progress[g.id]?.[g.key]);d.goals=[...completed,...unfinished.filter(g=>!completed.some(c=>byId.get(c.id)?.kind===byId.get(g.id)?.kind))];save();render();}else if(t.dataset.page){page=Number(t.dataset.page);render();document.getElementById('main').scrollIntoView({behavior:'smooth'});}else if(t.dataset.removeTask!==undefined){today().tasks.splice(Number(t.dataset.removeTask),1);save();render();}else if(t.hasAttribute('data-export'))exportState();else if(t.hasAttribute('data-import'))document.getElementById('backup-file').click();});
   document.getElementById('main').addEventListener('submit',e=>{if(e.target.id==='add-task'){e.preventDefault();const text=new FormData(e.target).get('task').trim();if(text){today().tasks.push({text,done:false});save();render();}}});
+  window.PaliaBridge={
+    catalog:new Map(DATA.map(i=>[i.id,C.checks(i).map(([key])=>key)])),
+    labels:new Map(DATA.map(i=>[i.id,nameOf(i)])),
+    getState:()=>JSON.parse(JSON.stringify(state)),
+    readAnonymous:()=>{const raw=localStorage.getItem(KEY);return raw?C.validateBackup({app:'palia-sammelbuch',version:1,state:JSON.parse(raw)}):{progress:{},days:{}};},
+    activate:(uid,next)=>{storageKey=uid?'palia-sammelbuch-account-v1:'+uid:KEY;storageOK=true;initialError='';applyingCloud=true;try{state=C.validateBackup({app:'palia-sammelbuch',version:1,state:next});save();render();}finally{applyingCloud=false;}return JSON.parse(JSON.stringify(state));},
+    apply:next=>{applyingCloud=true;try{state=C.validateBackup({app:'palia-sammelbuch',version:1,state:next});save();render();}finally{applyingCloud=false;}return JSON.parse(JSON.stringify(state));}
+  };
   window.addEventListener('hashchange',route);route();tick();setInterval(tick,1000);if(!storageOK)document.getElementById('save-status').textContent='Nicht dauerhaft gespeichert · bitte exportieren';
 })();
+</script><script>/* Versionierter, unabhängig testbarer Abgleich. Keine Gerätezeit entscheidet Konflikte. */
+const PaliaSyncCore = (() => {
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const equal = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+  const empty = () => ({progress:{},days:{}});
+  const fields = ['board0_text','board0_done','board1_text','board1_done','goals','tasks'];
+  const safe = s => typeof s === 'string' && s.length > 0 && s.length <= 200 && !['__proto__','prototype','constructor'].includes(s);
+  function identity(record) {
+    return record.type === 'check' ? 'check:'+encodeURIComponent(record.itemId)+':'+record.key : 'day:'+record.day+':'+record.field;
+  }
+  function valid(record, catalog) {
+    if (!record || record.version !== 1 || !Number.isSafeInteger(record.revision) || record.revision < 1) return false;
+    if (record.type === 'check') return safe(record.itemId) && catalog.has(record.itemId) && catalog.get(record.itemId).includes(record.key) && typeof record.value === 'boolean';
+    if (record.type !== 'day' || !/^\d{4}-\d{2}-\d{2}$/.test(record.day) || !fields.includes(record.field)) return false;
+    if (record.field.endsWith('_text')) return typeof record.value === 'string' && record.value.length <= 500;
+    if (record.field.endsWith('_done')) return typeof record.value === 'boolean';
+    if (!Array.isArray(record.value)) return false;
+    if (record.field === 'goals') return record.value.length <= 20 && record.value.every(g => g && catalog.has(g.id) && catalog.get(g.id).includes(g.key) && typeof g.label === 'string' && g.label.length <= 200);
+    return record.value.length <= 100 && record.value.every(t => t && typeof t.text === 'string' && t.text.length <= 500 && typeof t.done === 'boolean');
+  }
+  function flatten(state, catalog) {
+    const records = {};
+    const add = r => {const v={version:1,revision:1,...r};if (!valid(v,catalog)) throw Error('Ungültiger Synchronisierungswert.');records[identity(r)]={version:1,...r};};
+    for (const [itemId,checks] of Object.entries(state.progress)) {
+      if (!catalog.has(itemId)) continue; // Unbekannte alte Katalogeinträge bleiben in einer Sicherung, nicht in der Cloud.
+      for (const [key,value] of Object.entries(checks)) if (catalog.get(itemId).includes(key)) add({type:'check',itemId,key,value});
+    }
+    for (const [day,d] of Object.entries(state.days)) {
+      d.board.forEach((b,n) => {add({type:'day',day,field:'board'+n+'_text',value:b.text});add({type:'day',day,field:'board'+n+'_done',value:b.done});});
+      add({type:'day',day,field:'goals',value:d.goals});add({type:'day',day,field:'tasks',value:d.tasks});
+    }
+    return records;
+  }
+  function unflatten(records) {
+    const state = empty();
+    for (const r of Object.values(records)) {
+      if (r.type === 'check') {state.progress[r.itemId] ||= {};state.progress[r.itemId][r.key] = r.value;}
+      else {
+        const d = state.days[r.day] ||= {board:[{text:'',done:false},{text:'',done:false}],goals:[],tasks:[]};
+        if (r.field === 'goals' || r.field === 'tasks') d[r.field] = clone(r.value);
+        else {const n=Number(r.field[5]);d.board[n][r.field.endsWith('_text')?'text':'done']=r.value;}
+      }
+    }
+    return state;
+  }
+  class Model {
+    constructor(catalog, cached) {
+      this.catalog=catalog;this.remote={};this.pending={};this.sequence=0;this.initialized=false;
+      if (cached) {
+        if (cached.version !== 1 || !cached.remote || !cached.pending) throw Error('Ungültiger Cloud-Zwischenspeicher.');
+        for (const [id,r] of Object.entries(cached.remote)) {if (!valid(r,catalog) || identity(r)!==id) throw Error('Ungültiger Cloud-Zwischenspeicher.');this.remote[id]=clone(r);}
+        for (const [id,p] of Object.entries(cached.pending)) {
+          if (!p || !valid({...p.record,revision:1},catalog) || identity(p.record)!==id || !Number.isSafeInteger(p.baseRevision) || p.baseRevision<0 || !Number.isSafeInteger(p.sequence) || p.sequence<1) throw Error('Ungültige Warteschlange.');
+          this.pending[id]=clone(p);this.sequence=Math.max(this.sequence,p.sequence);
+        }
+        this.initialized=!!cached.initialized;
+      }
+    }
+    cache() {return clone({version:1,remote:this.remote,pending:this.pending,initialized:this.initialized});}
+    state() {return unflatten({...this.remote,...Object.fromEntries(Object.entries(this.pending).map(([id,p])=>[id,p.record]))});}
+    snapshot(records) {
+      const remote={};
+      for (const [id,r] of Object.entries(records)) {if (!valid(r,this.catalog) || identity(r)!==id) throw Error('Ungültige Cloud-Daten; Synchronisierung angehalten.');remote[id]=clone(r);}
+      this.remote=remote;this.initialized=true;
+      // Ein Wert allein ist kein Empfangsnachweis: eine neuere Revision muss vorliegen.
+      for (const [id,p] of Object.entries(this.pending)) if (remote[id]?.revision>p.baseRevision && equal(remote[id].value,p.record.value)) delete this.pending[id];
+    }
+    capture(before,after) {
+      const a=flatten(before,this.catalog), b=flatten(after,this.catalog);
+      for (const [id,r] of Object.entries(b)) if (!a[id] || !equal(a[id].value,r.value)) this.queue(id,r);
+      // Wiederherstellungen in der Cloud verwenden ausdrücklich importMissing(), niemals einen Vollersatz.
+    }
+    queue(id,record) {
+      const previous=this.pending[id];
+      if (!previous && this.remote[id] && equal(this.remote[id].value,record.value)) return;
+      this.pending[id]={record:clone(record),baseRevision:previous?.baseRevision ?? this.remote[id]?.revision ?? 0,sequence:++this.sequence};
+    }
+    importMissing(state) {
+      let count=0;
+      for (const [id,r] of Object.entries(flatten(state,this.catalog))) if (!this.remote[id] && !this.pending[id]) {this.queue(id,r);count++;}
+      return count;
+    }
+    conflicts() {return Object.entries(this.pending).filter(([id,p]) => (this.remote[id]?.revision ?? 0)!==p.baseRevision && !equal(this.remote[id]?.value,p.record.value));}
+    next() {const conflicts=new Set(this.conflicts().map(([id])=>id));const found=Object.entries(this.pending).find(([id])=>!conflicts.has(id));return found?{id:found[0],...clone(found[1])}:null;}
+    acceptCloud(id) {delete this.pending[id];}
+    keepMine(id) {if (this.pending[id]) {this.pending[id].baseRevision=this.remote[id]?.revision ?? 0;this.pending[id].sequence=++this.sequence;}}
+    settle(operation,committed) {
+      if (!this.remote[operation.id] || this.remote[operation.id].revision <= committed.revision) this.remote[operation.id]=clone(committed);
+      const p=this.pending[operation.id];
+      if (!p) return;
+      if (p.sequence===operation.sequence) delete this.pending[operation.id];
+      else p.baseRevision=committed.revision; // Nur die eigene bestätigte Vorgängeränderung rebasiert den Folgeklick.
+    }
+    conflict(operation,server) {
+      if (server) this.remote[operation.id]=clone(server);else delete this.remote[operation.id];
+    }
+  }
+  function decide(operation,server) {
+    if (server && equal(server.value,operation.record.value)) return {action:'already',record:server};
+    if ((server?.revision ?? 0)!==operation.baseRevision) return {action:'conflict',record:server};
+    return {action:'write',record:{...clone(operation.record),revision:operation.baseRevision+1}};
+  }
+  return {Model,flatten,unflatten,identity,valid,decide,equal,empty,clone};
+})();
+if (typeof module !== 'undefined') module.exports=PaliaSyncCore;
+</script><script>// Öffentliche Firebase-Web-Konfiguration, kein geheimer Server-Schlüssel.
+window.PALIA_FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyCDwvpAvapWGHwlM3CiiGUHJE_ROn3VPW4',
+  authDomain: 'palia-sammelbuch.firebaseapp.com',
+  projectId: 'palia-sammelbuch',
+  storageBucket: 'palia-sammelbuch.firebasestorage.app',
+  messagingSenderId: '93484731626',
+  appId: '1:93484731626:web:235485bdbf45a901c29b93'
+};
+</script><script type="module">/* Firebase Spark + GitHub Pages: Auth, Firestore, keine Cloud Functions. */
+const S=PaliaSyncCore, bridge=window.PaliaBridge;
+const $=id=>document.getElementById(id);
+const status=$('cloud-status'), message=$('cloud-message');
+const errorMessages={
+  'auth/invalid-credential':'E-Mail oder Passwort stimmt nicht.',
+  'auth/user-not-found':'E-Mail oder Passwort stimmt nicht.',
+  'auth/wrong-password':'E-Mail oder Passwort stimmt nicht.',
+  'auth/email-already-in-use':'Diese E-Mail ist bereits registriert. Bitte anmelden.',
+  'auth/invalid-email':'Bitte eine gültige E-Mail-Adresse eingeben.',
+  'auth/weak-password':'Bitte ein längeres Passwort wählen (mindestens sechs Zeichen).',
+  'auth/too-many-requests':'Zu viele Versuche. Bitte später erneut versuchen.',
+  'auth/network-request-failed':'Keine Verbindung. Bitte Internet prüfen und erneut versuchen.',
+  'auth/unauthorized-domain':'Diese Internetadresse ist in Firebase noch nicht freigegeben.',
+  'permission-denied':'Kein Datenzugriff. Bitte Firestore-Regeln und Anmeldung prüfen.',
+  'resource-exhausted':'Das kostenlose Firebase-Kontingent ist ausgeschöpft. Deine Änderungen bleiben lokal vorgemerkt.',
+  'unavailable':'Cloud momentan nicht erreichbar. Änderungen bleiben auf diesem Gerät vorgemerkt.'
+};
+const describe=e=>errorMessages[e?.code] || 'Die Cloud-Verbindung ist fehlgeschlagen. Änderungen bleiben lokal. Bitte später erneut versuchen.';
+let session=null, api=null, auth=null, db=null, authBusy=false;
+function localNotice(text){status.textContent='Nur lokal gespeichert';message.textContent=text;}
+function setAuthBusy(value){authBusy=value;for(const id of ['cloud-login','cloud-register','cloud-reset'])$(id).disabled=value;}
+function recordsOf(snapshot){return Object.fromEntries(snapshot.docs.map(doc=>[doc.id,doc.data()]));}
+function persist(s){localStorage.setItem(s.cacheKey,JSON.stringify(s.model.cache()));}
+function halt(s,e){s.error=describe(e);s.paused=true;paint(s);}
+function titleOf(r){return r.type==='check'?(bridge.labels.get(r.itemId)||r.itemId)+' · '+({normal:'Normal gesammelt / gekocht',home:'Stern fürs Haus',vault:'Stern für die Tresorkiste',learned:'Rezept erhalten',star:'Stern gekocht',crafted:'Hergestellt',owned:'Gesammelt'}[r.key]||r.key):r.day+' · '+({board0_text:'Brettaufgabe 1: Text',board0_done:'Brettaufgabe 1: erledigt',board1_text:'Brettaufgabe 2: Text',board1_done:'Brettaufgabe 2: erledigt',goals:'Tagesziele',tasks:'Eigene Tagesaufgaben'}[r.field]||r.field);}
+function valueText(value){if(typeof value==='boolean')return value?'Abgehakt':'Offen';if(typeof value==='string')return value||'(leer)';if(Array.isArray(value))return value.map(v=>v.id?(bridge.labels.get(v.id)||v.id)+' · '+v.label:(v.done?'✓ ':'○ ')+v.text).join('\n')||'(leere Liste)';return '(kein gespeicherter Wert)';}
+function paint(s){
+  if(session!==s)return;
+  const pending=Object.keys(s.model.pending).length, conflicts=s.model.conflicts().filter(([id])=>s.operation?.id!==id);
+  status.textContent=s.error?'Synchronisierung angehalten':!s.ready?'Cloud wird geladen':conflicts.length?conflicts.length+' Konflikt(e)':!navigator.onLine||!s.serverSeen?'Offline / Verbindung wird geprüft':pending?pending+' Änderung(en) ausstehend':'✓ Cloud synchronisiert';
+  message.textContent=s.error||(!s.ready?'Bitte warten: Der Cloud-Stand wird zuerst gelesen. Lokale Daten werden nicht automatisch übernommen.':conflicts.length?'Ein anderer Stand wurde gespeichert. Deine Änderung bleibt vorgemerkt, bis du auswählst.':pending?'Änderungen sind auf diesem Gerät vorgemerkt und werden nach erfolgreichem Abgleich übertragen.':'Deine Sammelbuch-Anmeldung synchronisiert Häkchen und Tageslisten. Kein Zugriff auf dein Xbox-Konto.');
+  $('cloud-import-local').disabled=!s.ready||!s.serverSeen||!!s.error;
+  const host=$('cloud-conflicts');host.replaceChildren();
+  for(const [id,p] of conflicts){
+    const box=document.createElement('div');box.className='cloud-conflict';
+    const title=document.createElement('strong');title.textContent=titleOf(p.record);box.append(title);
+    const text=document.createElement('p');text.textContent='Cloud: '+valueText(s.model.remote[id]?.value)+'\nDieses Gerät: '+valueText(p.record.value);box.append(text);
+    for(const [label,mine] of [['Cloud behalten',false],['Meine Änderung übernehmen',true]]){
+      const b=document.createElement('button');b.type='button';b.textContent=label;
+      b.onclick=()=>{if(session!==s)return;if(mine&&!confirm('Deine angezeigte Änderung für diesen Wert anstelle des aktuellen Cloud-Werts übernehmen?'))return;try{mine?s.model.keepMine(id):s.model.acceptCloud(id);persist(s);apply(s);pump(s);}catch(e){halt(s,e);}};
+      box.append(b);
+    }
+    host.append(box);
+  }
+}
+function apply(s){if(session!==s)return;s.view=bridge.apply(s.model.state());paint(s);}
+function schedule(s){if(s.timer||session!==s||!navigator.onLine||s.paused)return;s.timer=setTimeout(()=>{s.timer=null;if(!s.serverSeen)subscribe(s);else pump(s);},15000);}
+async function pump(s){
+  if(session!==s||!s.ready||s.busy||s.paused||!navigator.onLine||!s.serverSeen)return;
+  const operation=s.model.next();if(!operation){paint(s);return;}
+  s.busy=true;s.operation=operation;paint(s);
+  try{
+    const ref=api.doc(db,'users',s.uid,'progress',operation.id);
+    const outcome=await api.runTransaction(db,async transaction=>{
+      const snapshot=await transaction.get(ref), server=snapshot.exists()?snapshot.data():null;
+      if(server&&(!S.valid(server,bridge.catalog)||S.identity(server)!==operation.id))throw Object.assign(Error('Ungültige Cloud-Daten.'),{code:'invalid-cloud-data'});
+      const decision=S.decide(operation,server);
+      if(decision.action==='write')transaction.set(ref,{...decision.record,updatedAt:api.serverTimestamp()});
+      return decision;
+    });
+    if(outcome.action==='conflict')s.model.conflict(operation,outcome.record);
+    else s.model.settle(operation,outcome.record);
+    persist(s);s.error='';
+  }catch(e){
+    if(['permission-denied','resource-exhausted','invalid-cloud-data'].includes(e.code)){s.paused=true;s.error=describe(e);}
+    else {s.serverSeen=false;s.error='';schedule(s);}
+  }finally{
+    s.busy=false;s.operation=null;
+    if(session===s){apply(s);if(!s.error&&navigator.onLine&&s.serverSeen)setTimeout(()=>pump(s),0);else schedule(s);}
+  }
+}
+function subscribe(s){
+  s.unsubscribe?.();
+  s.unsubscribe=api.onSnapshot(api.collection(db,'users',s.uid,'progress'),{includeMetadataChanges:true},snapshot=>{
+    if(session!==s)return;
+    if(snapshot.metadata.fromCache||snapshot.metadata.hasPendingWrites){s.serverSeen=false;paint(s);return;}
+    try{
+      s.model.snapshot(recordsOf(snapshot));s.ready=true;s.serverSeen=true;if(!s.paused)s.error='';
+      persist(s);apply(s);$('main').inert=false;
+      // Ausschließlich neu erzeugte Tagesdaten des isolierten Kontos; niemals den anonymen Altbestand.
+      s.model.importMissing(s.view);persist(s);paint(s);pump(s);
+    }catch(e){s.paused=true;s.error='Cloud-Daten oder lokaler Zwischenspeicher konnten nicht sicher verarbeitet werden. Bitte Sicherung herunterladen und Unterstützung anfordern.';paint(s);}
+  },e=>{if(session!==s)return;s.serverSeen=false;s.unsubscribe=null;halt(s,e);});
+}
+async function importMissing(state){
+  const s=session;if(!s||!s.ready)throw Error('Bitte zuerst anmelden und den Cloud-Stand laden.');
+  if(!navigator.onLine){message.textContent='Die Übernahme benötigt eine Internetverbindung.';return;}
+  try{
+    const snapshot=await api.getDocsFromServer(api.collection(db,'users',s.uid,'progress'));
+    if(session!==s)return;
+    s.model.snapshot(recordsOf(snapshot));s.serverSeen=true;persist(s);apply(s);
+    const records=S.flatten(state,bridge.catalog), count=Object.keys(records).filter(id=>!s.model.remote[id]&&!s.model.pending[id]).length;
+    if(!count){message.textContent='Keine fehlenden Werte zu ergänzen. Vorhandene Cloud-Werte bleiben erhalten.';return;}
+    if(!confirm(count+' fehlende Werte aus diesem lokalen Stand in die Cloud ergänzen? Vorhandene Cloud-Werte werden NICHT ersetzt. Vorher eine Sicherung herunterladen, wenn du diesen Stand aufbewahren möchtest.'))return;
+    s.model.importMissing(state);persist(s);apply(s);pump(s);
+  }catch(e){message.textContent=describe(e);}
+}
+window.PaliaCloud={
+  signedIn:()=>!!session,
+  capture(state){
+    const s=session;if(!s||!s.ready)return;
+    try{s.model.capture(s.view,state);s.view=S.clone(state);persist(s);paint(s);pump(s);}
+    catch(e){s.paused=true;s.error='Die Änderungswarteschlange konnte nicht gespeichert werden. Bitte sofort eine Sicherung herunterladen; die Cloud-Übertragung ist angehalten.';paint(s);}
+  },
+  importState:importMissing
+};
+$('cloud-import-local').onclick=()=>{try{importMissing(bridge.readAnonymous());}catch(e){message.textContent='Der alte lokale Stand konnte nicht gelesen werden. Bitte eine gültige JSON-Sicherung laden.';}};
+$('cloud-logout').onclick=async()=>{
+  if(!auth)return;
+  if(session&&Object.keys(session.model.pending).length&&!confirm('Es gibt noch unbestätigte Änderungen. Sie bleiben für dieses Konto auf diesem Gerät vorgemerkt. Trotzdem abmelden?'))return;
+  try{await api.signOut(auth);}catch(e){message.textContent=describe(e);}
+};
+$('cloud-retry').onclick=()=>{const s=session;if(!s)return;s.error='';s.paused=false;subscribe(s);paint(s);};
+$('cloud-auth-form').onsubmit=async e=>{
+  e.preventDefault();if(authBusy)return;if(!auth){message.textContent='Firebase ist noch nicht eingerichtet oder nicht erreichbar.';return;}
+  const email=$('cloud-email').value.trim(),password=$('cloud-password').value;
+  setAuthBusy(true);
+  try{
+    if(e.submitter?.id==='cloud-register')await api.createUserWithEmailAndPassword(auth,email,password);
+    else await api.signInWithEmailAndPassword(auth,email,password);
+    $('cloud-password').value='';
+  }catch(error){message.textContent=describe(error);}finally{setAuthBusy(false);}
+};
+$('cloud-reset').onclick=async()=>{
+  if(!auth||authBusy)return;
+  const email=$('cloud-email');if(!email.value||!email.checkValidity()){email.reportValidity();message.textContent='Bitte zuerst deine E-Mail-Adresse eingeben.';return;}
+  setAuthBusy(true);try{await api.sendPasswordResetEmail(auth,email.value.trim());message.textContent='Falls für diese Adresse ein Konto besteht, erhältst du eine E-Mail zum Zurücksetzen.';}catch(e){message.textContent=describe(e);}finally{setAuthBusy(false);}
+};
+window.addEventListener('offline',()=>{if(session){session.serverSeen=false;paint(session);}});
+window.addEventListener('online',()=>{if(session){subscribe(session);paint(session);}});
+const config=window.PALIA_FIREBASE_CONFIG;
+if(!config?.apiKey||!config.authDomain||!config.projectId||!config.appId){
+  localNotice('Die Firebase-Web-Konfiguration fehlt noch. Alle bisherigen lokalen Funktionen bleiben verfügbar.');
+  setAuthBusy(true);
+}else{
+  try{
+    const [appModule,authModule,firestoreModule]=await Promise.all([
+      import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js'),
+      import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js'),
+      import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js')
+    ]);
+    api={...authModule,...firestoreModule};
+    const app=appModule.initializeApp(config);auth=api.getAuth(app);db=api.getFirestore(app);
+    await api.setPersistence(auth,api.browserLocalPersistence);
+    api.onAuthStateChanged(auth,user=>{
+      if(session){session.unsubscribe?.();clearTimeout(session.timer);}
+      session=null;$('cloud-conflicts').replaceChildren();
+      $('cloud-auth-form').hidden=!!user;$('cloud-account').hidden=!user;$('main').inert=false;
+      if(!user){
+        try{bridge.activate(null,bridge.readAnonymous());}catch(e){message.textContent='Lokaler Stand konnte nicht geladen werden. Bitte Sicherung laden.';return;}
+        localNotice('Nicht angemeldet. Dein bisheriger lokaler Stand bleibt getrennt vom Cloud-Konto.');return;
+      }
+      const uid=user.uid,cacheKey='palia-sync-v1:'+uid;
+      $('cloud-user').textContent='Angemeldet: '+user.email;
+      try{
+        const cached=localStorage.getItem(cacheKey);
+        const model=new S.Model(bridge.catalog,cached?JSON.parse(cached):null);
+        const s={uid,cacheKey,model,ready:model.initialized,serverSeen:false,busy:false,paused:false,error:'',timer:null,unsubscribe:null,operation:null};
+        session=s;s.view=bridge.activate(uid,model.state());if(s.ready)s.model.importMissing(s.view);persist(s);$('main').inert=!s.ready;paint(s);subscribe(s);
+      }catch(e){
+        $('main').inert=true;status.textContent='Cloud-Zwischenspeicher nicht lesbar';message.textContent='Der vorhandene Kontospeicher wird nicht überschrieben. Bitte nicht löschen; erst eine Sicherung und Hilfe anfordern.';
+      }
+    },error=>{message.textContent=describe(error);});
+  }catch(error){localNotice('Firebase konnte nicht geladen werden. Internet und Web-Konfiguration prüfen. Die lokale Anwendung funktioniert weiter.');}
+}
 </script>
 </body></html>
